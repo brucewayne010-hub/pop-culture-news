@@ -6,8 +6,8 @@ import { parseRSSFeed, generateSlug } from '@/lib/rss-parser'
 // This endpoint is called by Vercel Cron Jobs
 // It fetches news from all RSS sources and stores them in the database
 
-export const runtime = 'edge'
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60 // Allow up to 60 seconds for RSS fetching
 
 export async function GET(request: NextRequest) {
     try {
