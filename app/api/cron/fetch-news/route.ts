@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { getAllSources } from '@/lib/rss-sources'
 import { parseRSSFeed, generateSlug } from '@/lib/rss-parser'
+import { getRandomBackupArticles } from '@/lib/backup-news'
 
 // This endpoint is called by Vercel Cron Jobs
 // It fetches news from all RSS sources and stores them in the database
@@ -81,6 +82,42 @@ export async function GET(request: NextRequest) {
                 console.error(`Error fetching from ${source.name}:`, sourceError)
                 errors.push(`${source.name}: ${sourceError}`)
             }
+        }
+
+        // EMERGENCY BACKUP: If no articles were fetched (API failure), generate backup news
+        let backupUsed = false
+        if (totalFetched === 0) {
+            console.log('No articles fetched from RSS. Engaging emergency backup protocol...')
+            const backupArticles = getRandomBackupArticles(5)
+
+            for (const article of backupArticles) {
+                try {
+                    // Create unique slug for backup article
+                    const uniqueSlug = `backup-${generateSlug(article.title)}-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+
+                    const { error: insertError } = await supabase
+                        .from('articles')
+                        .insert({
+                            title: article.title,
+                            slug: uniqueSlug,
+                            description: article.description,
+                            content: article.content,
+                            category: article.category,
+                            image_url: article.image_url,
+                            source_name: article.source_name,
+                            source_url: 'https://peopleofculture.netlify.app/backup', // Dummy URL to identify backup
+                            is_auto_imported: true,
+                        })
+
+                    if (!insertError) {
+                        totalAdded++
+                    }
+                } catch (e) {
+                    console.error('Error inserting backup article:', e)
+                }
+            }
+            backupUsed = true
+            console.log(`Added ${totalAdded} backup articles`)
         }
 
         const response = {
