@@ -24,7 +24,6 @@ export async function parseRSSFeed(feedUrl: string): Promise<ParsedArticle[]> {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (compatible; NewsAggregator/1.0)',
             },
-            signal: AbortSignal.timeout(10000), // 10 second timeout
         })
 
         if (!response.ok) {
