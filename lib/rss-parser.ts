@@ -1,5 +1,5 @@
-// RSS Feed Parser Utility
-// Parses RSS/Atom feeds and extracts article data
+// RSS Feed Parser Utility - Using RSS2JSON API
+// This is more reliable for serverless environments
 
 export interface ParsedArticle {
     title: string
@@ -12,17 +12,16 @@ export interface ParsedArticle {
 }
 
 /**
- * Parse RSS feed XML and extract articles
- * Supports RSS 2.0 and Atom formats
+ * Parse RSS feed using RSS2JSON API (free, reliable, serverless-friendly)
  */
 export async function parseRSSFeed(feedUrl: string): Promise<ParsedArticle[]> {
     try {
-        // Use allorigins.win as a CORS proxy for better serverless compatibility
-        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(feedUrl)}`
+        // Use rss2json.com - free API that converts RSS to JSON
+        const apiUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feedUrl)}&api_key=public&count=10`
 
-        const response = await fetch(proxyUrl, {
+        const response = await fetch(apiUrl, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (compatible; NewsAggregator/1.0)',
+                'Accept': 'application/json',
             },
         })
 
@@ -31,16 +30,26 @@ export async function parseRSSFeed(feedUrl: string): Promise<ParsedArticle[]> {
             return []
         }
 
-        const xmlText = await response.text()
+        const data = await response.json()
 
-        // Basic validation
-        if (!xmlText || xmlText.length < 100) {
-            console.error(`Invalid RSS feed response from ${feedUrl}`)
+        if (data.status !== 'ok' || !data.items) {
+            console.error(`Invalid RSS feed response from ${feedUrl}:`, data.message || 'Unknown error')
             return []
         }
 
-        const articles = parseXML(xmlText)
-        return articles.slice(0, 10) // Limit to 10 articles per source
+        // Convert RSS2JSON format to our ParsedArticle format
+        const articles: ParsedArticle[] = data.items.map((item: any) => ({
+            title: item.title || 'Untitled',
+            description: stripHTML(item.description || item.content || '').substring(0, 300),
+            content: item.content || item.description || '',
+            link: item.link || item.guid || '',
+            pubDate: item.pubDate ? new Date(item.pubDate) : new Date(),
+            imageUrl: item.thumbnail || item.enclosure?.link || extractImageFromHTML(item.description || item.content || ''),
+            author: item.author || undefined,
+        })).filter((article: ParsedArticle) => article.title && article.link)
+
+        console.log(`Successfully fetched ${articles.length} articles from ${feedUrl}`)
+        return articles
     } catch (error) {
         console.error(`Error parsing RSS feed ${feedUrl}:`, error)
         return []
@@ -48,134 +57,11 @@ export async function parseRSSFeed(feedUrl: string): Promise<ParsedArticle[]> {
 }
 
 /**
- * Parse XML string and extract article data
+ * Extract image URL from HTML content
  */
-function parseXML(xmlText: string): ParsedArticle[] {
-    const articles: ParsedArticle[] = []
-
-    try {
-        // Simple XML parsing without external dependencies
-        // Extract items from RSS or entries from Atom
-
-        // Check if it's Atom or RSS
-        const isAtom = xmlText.includes('<feed') || xmlText.includes('xmlns="http://www.w3.org/2005/Atom"')
-
-        if (isAtom) {
-            // Parse Atom feed
-            const entryRegex = /<entry[^>]*>([\s\S]*?)<\/entry>/g
-            let match
-
-            while ((match = entryRegex.exec(xmlText)) !== null) {
-                const entry = match[1]
-                const article = parseAtomEntry(entry)
-                if (article) articles.push(article)
-            }
-        } else {
-            // Parse RSS feed
-            const itemRegex = /<item[^>]*>([\s\S]*?)<\/item>/g
-            let match
-
-            while ((match = itemRegex.exec(xmlText)) !== null) {
-                const item = match[1]
-                const article = parseRSSItem(item)
-                if (article) articles.push(article)
-            }
-        }
-    } catch (error) {
-        console.error('Error parsing XML:', error)
-    }
-
-    return articles
-}
-
-/**
- * Parse RSS item
- */
-function parseRSSItem(item: string): ParsedArticle | null {
-    try {
-        const title = extractTag(item, 'title')
-        const description = extractTag(item, 'description') || extractTag(item, 'content:encoded') || ''
-        const link = extractTag(item, 'link') || extractTag(item, 'guid')
-        const pubDate = extractTag(item, 'pubDate') || extractTag(item, 'dc:date')
-        const author = extractTag(item, 'dc:creator') || extractTag(item, 'author')
-
-        // Extract image from media:content, media:thumbnail, or enclosure
-        let imageUrl = extractAttribute(item, 'media:content', 'url') ||
-            extractAttribute(item, 'media:thumbnail', 'url') ||
-            extractAttribute(item, 'enclosure', 'url')
-
-        // If no image found, try to extract from description HTML
-        if (!imageUrl && description) {
-            const imgMatch = description.match(/<img[^>]+src="([^">]+)"/)
-            if (imgMatch) imageUrl = imgMatch[1]
-        }
-
-        if (!title || !link) return null
-
-        // Clean HTML from description
-        const cleanDescription = stripHTML(description).substring(0, 300)
-
-        return {
-            title: stripHTML(title),
-            description: cleanDescription,
-            content: description,
-            link: link,
-            pubDate: pubDate ? new Date(pubDate) : new Date(),
-            imageUrl: imageUrl || undefined,
-            author: author ? stripHTML(author) : undefined,
-        }
-    } catch (error) {
-        console.error('Error parsing RSS item:', error)
-        return null
-    }
-}
-
-/**
- * Parse Atom entry
- */
-function parseAtomEntry(entry: string): ParsedArticle | null {
-    try {
-        const title = extractTag(entry, 'title')
-        const summary = extractTag(entry, 'summary') || extractTag(entry, 'content')
-        const linkMatch = entry.match(/<link[^>]+href="([^"]+)"/)
-        const link = linkMatch ? linkMatch[1] : ''
-        const updated = extractTag(entry, 'updated') || extractTag(entry, 'published')
-        const author = extractTag(entry, 'author>name')
-
-        if (!title || !link) return null
-
-        const cleanSummary = stripHTML(summary || '').substring(0, 300)
-
-        return {
-            title: stripHTML(title),
-            description: cleanSummary,
-            content: summary || '',
-            link: link,
-            pubDate: updated ? new Date(updated) : new Date(),
-            author: author ? stripHTML(author) : undefined,
-        }
-    } catch (error) {
-        console.error('Error parsing Atom entry:', error)
-        return null
-    }
-}
-
-/**
- * Extract content from XML tag
- */
-function extractTag(xml: string, tagName: string): string {
-    const regex = new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)<\/${tagName.split('>')[0]}>`, 'i')
-    const match = xml.match(regex)
-    return match ? match[1].trim() : ''
-}
-
-/**
- * Extract attribute from XML tag
- */
-function extractAttribute(xml: string, tagName: string, attrName: string): string {
-    const regex = new RegExp(`<${tagName}[^>]*${attrName}="([^"]+)"`, 'i')
-    const match = xml.match(regex)
-    return match ? match[1] : ''
+function extractImageFromHTML(html: string): string | undefined {
+    const imgMatch = html.match(/<img[^>]+src="([^">]+)"/)
+    return imgMatch ? imgMatch[1] : undefined
 }
 
 /**
