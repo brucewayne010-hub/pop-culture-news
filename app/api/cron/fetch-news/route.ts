@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabase, supabaseAdmin } from '@/lib/supabase'
 import { getAllSources } from '@/lib/rss-sources'
 import { parseRSSFeed, generateSlug } from '@/lib/rss-parser'
 import { getRandomBackupArticles } from '@/lib/backup-news'
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
                         const slug = `${baseSlug}-${Date.now()}`
 
                         // Check if article already exists by source URL
-                        const { data: existing } = await supabase
+                        const { data: existing } = await supabaseAdmin
                             .from('articles')
                             .select('id')
                             .eq('source_url', article.link)
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
                         }
 
                         // Insert new article
-                        const { error: insertError } = await supabase
+                        const { error: insertError } = await supabaseAdmin
                             .from('articles')
                             .insert({
                                 title: article.title.substring(0, 200),
@@ -95,7 +95,7 @@ export async function GET(request: NextRequest) {
                     // Create unique slug for backup article
                     const uniqueSlug = `backup-${generateSlug(article.title)}-${Date.now()}-${Math.floor(Math.random() * 1000)}`
 
-                    const { error: insertError } = await supabase
+                    const { error: insertError } = await supabaseAdmin
                         .from('articles')
                         .insert({
                             title: article.title,
