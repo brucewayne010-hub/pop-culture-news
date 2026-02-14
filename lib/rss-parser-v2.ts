@@ -1,5 +1,5 @@
-// RSS Feed Parser Utility
-// Parses RSS/Atom feeds and extracts article data
+// Improved RSS Feed Parser for Netlify Serverless Functions
+// Uses a more reliable approach with better error handling
 
 export interface ParsedArticle {
     title: string
@@ -12,12 +12,11 @@ export interface ParsedArticle {
 }
 
 /**
- * Parse RSS feed XML and extract articles
- * Supports RSS 2.0 and Atom formats
+ * Parse RSS feed using a CORS proxy for better compatibility
  */
 export async function parseRSSFeed(feedUrl: string): Promise<ParsedArticle[]> {
     try {
-        // Use allorigins.win as a CORS proxy for better serverless compatibility
+        // Use allorigins.win as a CORS proxy - it's free and reliable
         const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(feedUrl)}`
 
         const response = await fetch(proxyUrl, {
@@ -55,9 +54,6 @@ function parseXML(xmlText: string): ParsedArticle[] {
     const articles: ParsedArticle[] = []
 
     try {
-        // Simple XML parsing without external dependencies
-        // Extract items from RSS or entries from Atom
-
         // Check if it's Atom or RSS
         const isAtom = xmlText.includes('<feed') || xmlText.includes('xmlns="http://www.w3.org/2005/Atom"')
 
@@ -165,7 +161,7 @@ function parseAtomEntry(entry: string): ParsedArticle | null {
  * Extract content from XML tag
  */
 function extractTag(xml: string, tagName: string): string {
-    const regex = new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)<\/${tagName.split('>')[0]}>`, 'i')
+    const regex = new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)<\\/${tagName.split('>')[0]}>`, 'i')
     const match = xml.match(regex)
     return match ? match[1].trim() : ''
 }
